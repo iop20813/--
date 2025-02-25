@@ -10,7 +10,7 @@ import xgboost as xgb
 from sklearn.model_selection import train_test_split, RandomizedSearchCV
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import mean_squared_error
-
+import numpy as np
 
 matplotlib.rcParams['font.sans-serif'] = ['Microsoft YaHei']
 matplotlib.rcParams['axes.unicode_minus'] = False
@@ -63,10 +63,10 @@ years = [107, 108, 109, 110]
 for year in years:
     load_data_to_db(year)
 
-plot_death_trend(years)
-for year in years:
-    print(f'年度 {year} 主要肇因分析:')
-    print(analyze_top_causes(year))
+# plot_death_trend(years)
+# for year in years:
+#     print(f'年度 {year} 主要肇因分析:')
+#     print(analyze_top_causes(year))
 
 
 
@@ -76,23 +76,45 @@ def load_data(year):
         query = f"SELECT * FROM traffic_accident_{year}"
         df = pd.read_sql(query, con)
     return df
+import re
+
+def convert_custom_date(date_str):
+    """轉換民國年份的時間格式為西元格式"""
+    match = re.match(r'(\d+)年(\d+)月(\d+)日 (\d+)時(\d+)?分?(\d+)?秒?', date_str)
+    
+    if not match:
+        return pd.NaT  # 無法匹配則返回 NaT
+
+    year = int(match.group(1)) + 1911  # 民國轉西元
+    month = int(match.group(2))
+    day = int(match.group(3))
+    hour = int(match.group(4))
+    minute = int(match.group(5) or 0)  # 有些數據沒有分鐘，預設為 0
+    second = int(match.group(6) or 0)  # 有些數據沒有秒數，預設為 0
+
+    return pd.Timestamp(year, month, day, hour, minute, second)
+
+
 
 # 讀取多年度資料
 years = [107, 108, 109, 110]
 df_list = [load_data(year) for year in years]
 df = pd.concat(df_list, ignore_index=True)
-
+print('\n')
+print(df['發生時間'].apply(convert_custom_date).head(10))
+df['發生時間'] = df['發生時間'].apply(convert_custom_date)
 # 清理欄位名稱
 df.columns = df.columns.str.strip()
 df.columns = df.columns.str.replace("\s+", "_", regex=True)
 
 # 嘗試解析發生時間，並指定格式（根據你的數據調整格式）
 df['發生時間'] = pd.to_datetime(df['發生時間'], format='%Y/%m/%d %H:%M', errors='coerce')
-
 # 檢查有無 NaT 值（無法解析的時間）
 print(f"無效的時間數量: {df['發生時間'].isna().sum()}")
-
-# 只保留有效時間
+invalid_dates = df[df['發生時間'].isna()]
+print('invalid_dates')
+print(invalid_dates)
+# 只保留有效時間s
 df = df.dropna(subset=['發生時間'])
 
 # 添加時間特徵
